@@ -22,9 +22,10 @@ function VideoPlayer({ autoplay = false }) {
     const [durationSec, setDurationSec] = useState(0);
     const [currentSec, setCurrentTimeSec] = useState(0);
 
-    const [isDropdownActive, setIsDropdownActive] = useState(false);  // Dropdown state
-    const imageDuration = 4; // Actual duration in seconds
-    const imageProgressMax = 1000; // New maximum value for image progress
+    const [isDropdownActive, setIsDropdownActive] = useState(false);
+    const sequenceDuration = 16; // Total duration for 4 images in sequence
+    const singleImageDuration = 4; // Duration of each image
+    const imageProgressMax = 1000; // Maximum value for image progress
 
     const isImageFile = (src) => {
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
@@ -34,6 +35,10 @@ function VideoPlayer({ autoplay = false }) {
     const isVideoFile = (src) => {
         const videoExtensions = ['.mp4', '.webm', '.ogg'];
         return src && videoExtensions.some(extension => src.toLowerCase().endsWith(extension));
+    };
+
+    const isImageSequence = () => {
+        return currentMediaIndex >= mediaList.length - 4;
     };
 
     const handlePlayPause = () => {
@@ -46,8 +51,11 @@ function VideoPlayer({ autoplay = false }) {
 
     const play = async () => {
         if (currentMedia) {
-            if (isImageFile(currentMedia.url)) {
-                playImage();
+            if (isImageSequence()) {
+                playImageSequence();
+                setIsPlaying(true);
+            } else if (isImageFile(currentMedia.url)) {
+                playStandaloneImage();
                 setIsPlaying(true);
             } else if (isVideoFile(currentMedia.url) && videoRef.current) {
                 try {
@@ -64,7 +72,7 @@ function VideoPlayer({ autoplay = false }) {
 
     const pause = () => {
         if (currentMedia) {
-            if (isImageFile(currentMedia.url)) {
+            if (isImageSequence() || isImageFile(currentMedia.url)) {
                 pauseImage();
             } else if (isVideoFile(currentMedia.url) && videoRef.current) {
                 videoRef.current.pause();
@@ -74,7 +82,7 @@ function VideoPlayer({ autoplay = false }) {
     };
 
     const stop = () => {
-        if (currentMedia && isImageFile(currentMedia.url)) {
+        if (isImageSequence() || (currentMedia && isImageFile(currentMedia.url))) {
             clearInterval(imageTimerRef.current);
             setImageElapsed(0);
             setImageElapsedTime(0);
@@ -87,19 +95,37 @@ function VideoPlayer({ autoplay = false }) {
         setIsPlaying(false);
     };
 
-    const playImage = () => {
+    const playImageSequence = () => {
         clearInterval(imageTimerRef.current);
         const startTime = Date.now() - imageElapsedTime * 1000;
         const timer = setInterval(() => {
-            const elapsedSecs = Math.min(Math.floor((Date.now() - startTime) / 1000), imageDuration);
+            const elapsedSecs = Math.min(Math.floor((Date.now() - startTime) / 1000), sequenceDuration);
             setImageElapsedTime(elapsedSecs);
-            setImageElapsed((elapsedSecs / imageDuration) * imageProgressMax);
+            setImageElapsed((elapsedSecs / sequenceDuration) * imageProgressMax);
             
-            if (elapsedSecs >= imageDuration) {
+            if (elapsedSecs >= sequenceDuration) {
+                clearInterval(timer);
+                handleNext();
+            } else if (elapsedSecs % singleImageDuration === 0 && elapsedSecs !== 0) {
+                setCurrentMediaIndex(prevIndex => prevIndex + 1);
+            }
+        }, 1000);
+        imageTimerRef.current = timer;
+    };
+
+    const playStandaloneImage = () => {
+        clearInterval(imageTimerRef.current);
+        const startTime = Date.now() - imageElapsedTime * 1000;
+        const timer = setInterval(() => {
+            const elapsedSecs = Math.min(Math.floor((Date.now() - startTime) / 1000), singleImageDuration);
+            setImageElapsedTime(elapsedSecs);
+            setImageElapsed((elapsedSecs / singleImageDuration) * imageProgressMax);
+            
+            if (elapsedSecs >= singleImageDuration) {
                 clearInterval(timer);
                 handleNext();
             }
-        }, 1000); // Update every second
+        }, 1000);
         imageTimerRef.current = timer;
     };
 
@@ -108,19 +134,36 @@ function VideoPlayer({ autoplay = false }) {
     };
 
     const handleNext = useCallback(() => {
-        setCurrentMediaIndex((prevIndex) => (prevIndex + 1) % mediaList.length);
-    }, [mediaList.length]);
+        if (isImageSequence() && currentMediaIndex < mediaList.length - 1) {
+            setCurrentMediaIndex(prevIndex => prevIndex + 1);
+            setImageElapsedTime(prevTime => prevTime + singleImageDuration);
+        } else {
+            setCurrentMediaIndex((prevIndex) => (prevIndex + 1) % mediaList.length);
+            setImageElapsedTime(0);
+        }
+    }, [currentMediaIndex, mediaList.length]);
 
     const handlePrev = useCallback(() => {
-        setCurrentMediaIndex((prevIndex) => (prevIndex - 1 + mediaList.length) % mediaList.length);
-    }, [mediaList.length]);
+        if (isImageSequence() && currentMediaIndex > mediaList.length - 4) {
+            setCurrentMediaIndex(prevIndex => prevIndex - 1);
+            setImageElapsedTime(prevTime => Math.max(prevTime - singleImageDuration, 0));
+        } else {
+            setCurrentMediaIndex((prevIndex) => (prevIndex - 1 + mediaList.length) % mediaList.length);
+            setImageElapsedTime(0);
+        }
+    }, [currentMediaIndex, mediaList.length]);
 
     const handleVideoRange = () => {
         if (currentMedia && isVideoFile(currentMedia.url) && videoRef.current) {
             videoRef.current.currentTime = videoRangeRef.current.value;
             setCurrentTimeSec(videoRangeRef.current.value);
+        } else if (isImageSequence()) {
+            const newElapsedTime = (Number(videoRangeRef.current.value) / imageProgressMax) * sequenceDuration;
+            setImageElapsed(Number(videoRangeRef.current.value));
+            setImageElapsedTime(newElapsedTime);
+            setCurrentMediaIndex(mediaList.length - 4 + Math.floor(newElapsedTime / singleImageDuration));
         } else if (currentMedia && isImageFile(currentMedia.url)) {
-            const newElapsedTime = (Number(videoRangeRef.current.value) / imageProgressMax) * imageDuration;
+            const newElapsedTime = (Number(videoRangeRef.current.value) / imageProgressMax) * singleImageDuration;
             setImageElapsed(Number(videoRangeRef.current.value));
             setImageElapsedTime(newElapsedTime);
         }
@@ -266,7 +309,7 @@ function VideoPlayer({ autoplay = false }) {
                             {media.title || media.url}
                         </li>
                     ))}
-                </ul>
+                    </ul>
                 </div>
             </div>
             <div className="VideoPlayer__controls">
@@ -309,8 +352,15 @@ function VideoPlayer({ autoplay = false }) {
                                 value={imageElapsed}
                                 min={0}
                             />
+                            {isImageSequence() && (
+                                <div className="image-progress-marks">
+                                    <div className="mark" style={{left: '25%'}}></div>
+                                    <div className="mark" style={{left: '50%'}}></div>
+                                    <div className="mark" style={{left: '75%'}}></div>
+                                </div>
+                            )}
                             <span className="time">
-                                0:{Math.floor(imageElapsedTime)} / 0:{imageDuration}
+                                0:{Math.floor(imageElapsedTime)} / 0:{isImageSequence() ? sequenceDuration : singleImageDuration}
                             </span>
                         </>
                     )}
