@@ -23,6 +23,7 @@ function VideoPlayer({ autoplay = false }) {
     const [currentSec, setCurrentTimeSec] = useState(0);
 
     const [isDropdownActive, setIsDropdownActive] = useState(false);
+    const [isTransitioning, setIsTransitioning] = useState(false);
     const sequenceDuration = 16; // Total duration for 4 images in sequence
     const singleImageDuration = 4; // Duration of each image
     const imageProgressMax = 1000; // Maximum value for image progress
@@ -99,15 +100,21 @@ function VideoPlayer({ autoplay = false }) {
         clearInterval(imageTimerRef.current);
         const startTime = Date.now() - imageElapsedTime * 1000;
         const timer = setInterval(() => {
-            const elapsedSecs = Math.min(Math.floor((Date.now() - startTime) / 1000), sequenceDuration);
-            setImageElapsedTime(elapsedSecs);
-            setImageElapsed((elapsedSecs / sequenceDuration) * imageProgressMax);
-            
-            if (elapsedSecs >= sequenceDuration) {
-                clearInterval(timer);
-                handleNext();
-            } else if (elapsedSecs % singleImageDuration === 0 && elapsedSecs !== 0) {
-                setCurrentMediaIndex(prevIndex => prevIndex + 1);
+            if (!isTransitioning) {
+                const elapsedSecs = Math.min(Math.floor((Date.now() - startTime) / 1000), sequenceDuration);
+                setImageElapsedTime(elapsedSecs);
+                setImageElapsed((elapsedSecs / sequenceDuration) * imageProgressMax);
+                
+                if (elapsedSecs >= sequenceDuration) {
+                    clearInterval(timer);
+                    handleNext();
+                } else if (elapsedSecs % singleImageDuration === 0 && elapsedSecs !== 0) {
+                    setIsTransitioning(true);
+                    setTimeout(() => {
+                        setCurrentMediaIndex(prevIndex => prevIndex + 1);
+                        setIsTransitioning(false);
+                    }, 50); // Short delay to simulate image loading
+                }
             }
         }, 1000);
         imageTimerRef.current = timer;
@@ -354,13 +361,16 @@ function VideoPlayer({ autoplay = false }) {
                             />
                             {isImageSequence() && (
                                 <div className="image-progress-marks">
-                                    <div className="mark" style={{left: '25%'}}></div>
-                                    <div className="mark" style={{left: '50%'}}></div>
-                                    <div className="mark" style={{left: '75%'}}></div>
+                                    <div className="mark" style={{left: '28%'}}></div>
+                                    <div className="mark" style={{left: '52%'}}></div>
+                                    <div className="mark" style={{left: '70%'}}></div>
                                 </div>
                             )}
                             <span className="time">
-                                0:{Math.floor(imageElapsedTime)} / 0:{isImageSequence() ? sequenceDuration : singleImageDuration}
+                                {isTransitioning 
+                                    ? `0:${Math.floor(imageElapsedTime) - 1}` 
+                                    : `0:${Math.floor(imageElapsedTime)}`
+                                } / 0:{isImageSequence() ? sequenceDuration : singleImageDuration}
                             </span>
                         </>
                     )}
@@ -369,7 +379,16 @@ function VideoPlayer({ autoplay = false }) {
                     <button className="control-button volume" onClick={handleMute}>
                         <i className={`ri-volume-${isMute ? 'mute' : 'up'}-fill`}></i>
                     </button>
-                    <input type="range" className='range-input' ref={volumeRangeRef} max={1} min={0} value={currentVolume} onChange={handleVolumeRange} step={0.1} />
+                    <input 
+                        type="range" 
+                        className='range-input' 
+                        ref={volumeRangeRef} 
+                        max={1} 
+                        min={0} 
+                        value={currentVolume} 
+                        onChange={handleVolumeRange} 
+                        step={0.1} 
+                    />
                     <button className="control-button full-screen" onClick={handleFullScreen}>
                         <i className="ri-fullscreen-line"></i>
                     </button>
