@@ -10,6 +10,7 @@ function VideoPlayer({ autoplay = false }) {
     const [currentVolume, setCurrentVolume] = useState(1);
     const [isMute, setIsMute] = useState(true);  // Start muted
     const [imageElapsed, setImageElapsed] = useState(0);
+    const [imageElapsedTime, setImageElapsedTime] = useState(0);
     const videoRef = useRef(null);
     const videoRangeRef = useRef(null);
     const volumeRangeRef = useRef(null);
@@ -76,6 +77,7 @@ function VideoPlayer({ autoplay = false }) {
         if (currentMedia && isImageFile(currentMedia.url)) {
             clearInterval(imageTimerRef.current);
             setImageElapsed(0);
+            setImageElapsedTime(0);
         } else if (videoRef.current) {
             videoRef.current.pause();
             videoRef.current.currentTime = 0;
@@ -87,16 +89,17 @@ function VideoPlayer({ autoplay = false }) {
 
     const playImage = () => {
         clearInterval(imageTimerRef.current);
+        const startTime = Date.now() - imageElapsedTime * 1000;
         const timer = setInterval(() => {
-            setImageElapsed((prev) => {
-                if (prev >= imageProgressMax) {
-                    clearInterval(timer);
-                    handleNext();
-                    return 0;
-                }
-                return prev + (imageProgressMax / (imageDuration * 1000 / 10)); // Increment by smaller amounts
-            });
-        }, 10); // Update every 10ms for smoother animation
+            const elapsedSecs = Math.min(Math.floor((Date.now() - startTime) / 1000), imageDuration);
+            setImageElapsedTime(elapsedSecs);
+            setImageElapsed((elapsedSecs / imageDuration) * imageProgressMax);
+            
+            if (elapsedSecs >= imageDuration) {
+                clearInterval(timer);
+                handleNext();
+            }
+        }, 1000); // Update every second
         imageTimerRef.current = timer;
     };
 
@@ -117,7 +120,9 @@ function VideoPlayer({ autoplay = false }) {
             videoRef.current.currentTime = videoRangeRef.current.value;
             setCurrentTimeSec(videoRangeRef.current.value);
         } else if (currentMedia && isImageFile(currentMedia.url)) {
+            const newElapsedTime = (Number(videoRangeRef.current.value) / imageProgressMax) * imageDuration;
             setImageElapsed(Number(videoRangeRef.current.value));
+            setImageElapsedTime(newElapsedTime);
         }
     };
 
@@ -152,7 +157,6 @@ function VideoPlayer({ autoplay = false }) {
             videoRef.current.muted = !isMute;
         }
     };
-
 
     useEffect(() => {
         let interval;
@@ -216,6 +220,7 @@ function VideoPlayer({ autoplay = false }) {
         setCurrentTimeSec(0);
         setCurrentTime([0, 0]);
         setImageElapsed(0);
+        setImageElapsedTime(0);
         setIsPlaying(false);
         
         if (currentMedia && autoplay) {
@@ -305,7 +310,7 @@ function VideoPlayer({ autoplay = false }) {
                                 min={0}
                             />
                             <span className="time">
-                                {(imageElapsed / imageProgressMax * imageDuration).toFixed(1)} / {imageDuration}
+                                0:{Math.floor(imageElapsedTime)} / 0:{imageDuration}
                             </span>
                         </>
                     )}
